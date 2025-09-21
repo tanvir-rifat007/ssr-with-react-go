@@ -2,15 +2,16 @@
   "name": "ssr",
   "version": "1.0.0",
   "main": "index.js",
-    "type":"module",
+  "type": "module",
   "scripts": {
-    "build":"vite build"
+    "build": "vite build"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@tanstack/react-router": "^1.131.49",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

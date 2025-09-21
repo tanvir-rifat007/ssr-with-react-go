@@ -53,13 +53,16 @@ func initializeApp() error {
 }
 
 func handleSSR(w http.ResponseWriter, r *http.Request) {
-	// Create a new V8 context for each request (SSR)
+	// Skip assets
+	if strings.HasPrefix(r.URL.Path, "/assets/") {
+		return
+	}
+
 	iso := v8go.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8go.NewContext(iso)
 	defer ctx.Close()
 
-	// Setup React and ReactDOM Server in V8 context
 	setupReactInV8(ctx)
 
 	// Execute the App component
@@ -69,12 +72,14 @@ func handleSSR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Render React component to static markup
-	renderScript := `
+	// Render with current pathname for SSR
+	renderScript := fmt.Sprintf(`
 		const { renderToString } = ReactDOMServer;
-		const appElement = React.createElement(globalThis.App);
+		const appElement = React.createElement(globalThis.App, { 
+			ssrPathname: '%s' 
+		});
 		renderToString(appElement);
-	`
+	`, r.URL.Path)
 
 	result, err := ctx.RunScript(renderScript, "render.js")
 	if err != nil {
@@ -82,21 +87,9 @@ func handleSSR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Replace placeholder with rendered content
 	htmlContent := strings.Replace(htmlShell, "<!--ROOT-->", result.String(), 1)
-
-	// in ssg we should write this to the dist/index.html file
-	// but this is ssr so we have to dump it to the each fresh response
-
-	// Set appropriate headers
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("X-Rendered-By", "Go-SSR")
-
-	// Send the server-rendered HTML
 	fmt.Fprint(w, htmlContent)
-
-	// Log the request
-	fmt.Printf("SSR Request: %s %s - Rendered fresh HTML\n", r.Method, r.URL.Path)
 }
 
 func setupReactInV8(ctx *v8go.Context) {
@@ -117,7 +110,12 @@ func setupReactInV8(ctx *v8go.Context) {
             },
             useState: function(initialState) {
                 return [initialState, function() {}];
-            }
+            },
+		useEffect: function(effect, deps) {
+				// SSR mock - effects don't run
+				return;
+			}
+
         };
 
         const ReactDOMServer = {
@@ -149,24 +147,35 @@ func setupReactInV8(ctx *v8go.Context) {
             
             return '<' + type + attrs + '>' + childrenStr + '</' + type + '>';
         }
-        
-        function renderAttributes(props) {
-            if (!props) return '';
-            
-            return Object.keys(props)
-                .filter(key => key !== 'children' && props[key] != null)
-                .filter(key => !key.startsWith('on')) // Skip event handlers in SSR
-                .map(key => {
-                    const value = props[key];
-                    if (typeof value === 'boolean') {
-                        return value ? ' ' + key : '';
-                    }
-                    
-                    const attrName = key === 'className' ? 'class' : key;
-                    return ' ' + attrName + '="' + String(value).replace(/"/g, '&quot;') + '"';
-                })
-                .join('');
-        }
+    
+		function renderAttributes(props) {
+			if (!props) return '';
+			
+			return Object.keys(props)
+				.filter(key => key !== 'children' && props[key] != null)
+				.filter(key => !key.startsWith('on'))
+				.map(key => {
+					const value = props[key];
+					if (typeof value === 'boolean') {
+						return value ? ' ' + key : '';
+					}
+					
+					// Handle style objects
+					if (key === 'style' && typeof value === 'object') {
+						const styleStr = Object.keys(value)
+							.map(styleKey => {
+								const styleProp = styleKey.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+								return styleProp + ': ' + value[styleKey];
+							})
+							.join('; ');
+						return ' style="' + styleStr + '"';
+					}
+					
+					const attrName = key === 'className' ? 'class' : key;
+					return ' ' + attrName + '="' + String(value).replace(/"/g, '&quot;') + '"';
+				})
+				.join('');
+		}
     `
 
 	_, err := ctx.RunScript(reactSetup, "react-setup.js")
