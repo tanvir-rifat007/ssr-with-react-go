@@ -1,17 +1,21 @@
-// App.js - Server-side that mimics RouterProvider output
-// because insides main.go the v8go doesn't understand the tanstack router
-
 const { createElement: h, useState } = React;
 
+// Heavy Home component
 function Home() {
-
     const [count, setCount] = useState(0);
-    return h("div", null,
-        h("h1", null, "This is ssr"),
-        h("p", null, "This ssr is built with react+go"),
-        h("button", { onClick: () => setCount(count + 1) }, `click me: ${count} times`)
-    )
 
+    // Simulate heavy computation / large DOM
+    const largeList = [];
+    for (let i = 0; i < 10000; i++) {
+        largeList.push(h("li", { key: i }, `Item #${i}`));
+    }
+
+    return h("div", null,
+        h("h1", null, "This is SSR - Heavy Render"),
+        h("p", null, "This SSR is built with React + Go"),
+        h("button", { onClick: () => setCount(count + 1) }, `click me: ${count} times`),
+        h("ul", null, ...largeList)
+    );
 }
 
 function About() {
@@ -36,7 +40,6 @@ function App(props) {
             PageComponent = () => h("div", null, h("h1", null, "404"));
     }
 
-    // This structure must exactly match what RouterProvider + Layout + Outlet produces
     return h("div", null,
         h("nav", { style: { padding: "20px", borderBottom: "1px solid #ccc" } },
             h("a", { href: "/", style: { marginRight: "20px" } }, "Home"),
@@ -49,3 +52,4 @@ function App(props) {
 }
 
 globalThis.App = App;
+
